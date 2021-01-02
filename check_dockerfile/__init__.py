@@ -28,11 +28,18 @@ def check(dockerfile: Path) -> List[Tuple[str, str, bool]]:
             is_trusted_base_image(config.trusted_images, dfp.baseimage),
         )
     )
+    checks.append(
+        (
+            "Executes as non-root",
+            "",
+            executes_as_non_root(dfp),
+        )
+    )
     return checks
 
 
 def is_trusted_base_image(trusted_images: List[str], base_image: str) -> bool:
-    image2tags: Dict[str, List[str]] = defaultdict()
+    image2tags: Dict[str, List[str]] = defaultdict(list)
     for trusted_image in trusted_images:
         if ":" in trusted_image:
             image, tag = trusted_image.split(":")
@@ -44,3 +51,7 @@ def is_trusted_base_image(trusted_images: List[str], base_image: str) -> bool:
     return base_image in image2tags and (
         "*" in image2tags[base_image] or tag in image2tags[base_image]
     )
+
+
+def executes_as_non_root(dfp: DockerfileParser) -> bool:
+    return any(el for el in dfp.structure if el["instruction"] == "USER")
