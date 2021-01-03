@@ -1,0 +1,16 @@
+FROM python:3.7-slim-buster
+
+# Copy requirements.txt and install packages
+COPY requirements.txt /opt/app/requirements.txt
+WORKDIR /opt/app
+RUN pip install -r requirements.txt
+
+# Copy projects code
+COPY . /opt/app
+RUN pip install -e . --no-cache-dir
+
+# Start app
+ENV ENV=prod
+EXPOSE 5000
+ENTRYPOINT ["sh", "start.sh"]
+CMD ["/opt/app/start.sh"]

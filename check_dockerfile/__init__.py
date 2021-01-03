@@ -33,7 +33,86 @@ def check(dockerfile: Path) -> List[Tuple[str, str, bool]]:
     checks.append(("A tag for the base image is set", tag_str, tag is not None))
     checks.append(("Executes as non-root", "", executes_as_non_root(dfp)))
     checks.append(("COPY added after apt-get update", "", copy_added_after_update(dfp)))
+    checks.append(
+        (
+            "'apt-get update' always has upgrade/install in same command",
+            "",
+            apt_update_has_upgrade_or_install(dfp),
+        )
+    )
+    checks.append(
+        (
+            "Only install dependencies you're really using",
+            "",
+            use_no_install_recommends(dfp),
+        )
+    )
+    checks.append(("apt-caches are cleaned", "", apt_caches_are_cleaned(dfp)))
+    checks.append(
+        ("Don't put secrets as ENV variables in the image", "", no_secrets_as_env(dfp))
+    )
     return checks
+
+
+def no_secrets_as_env(dfp: DockerfileParser) -> bool:
+    """
+    Do this instead:
+
+    RUN --mount=type=secret,id=aws,target=/root/.aws/credentials,required
+
+    or
+
+    RUN --mount=type=ssh,required
+    """
+    for step in dfp.structure:
+        if step["instruction"] != "ENV":
+            for name in ["AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"]:
+                if name in step["value"]:
+                    return False
+    return True
+
+
+def apt_caches_are_cleaned(dfp: DockerfileParser) -> bool:
+    for step in dfp.structure:
+        if step["instruction"] != "RUN":
+            continue
+        if (
+            "apt-get install" not in step["value"]
+            and "apt-get -y install" not in step["value"]
+        ):
+            continue
+        if "rm -rf /var/lib/apt/lists/*" not in step["value"]:
+            return False
+    return True
+
+
+def use_no_install_recommends(dfp: DockerfileParser) -> bool:
+    """Only install dependencies you're really using."""
+    for step in dfp.structure:
+        if step["instruction"] != "RUN":
+            continue
+        if (
+            "apt-get install" not in step["value"]
+            and "apt-get -y install" not in step["value"]
+        ):
+            continue
+        if "--no-install-recommends" not in step["value"]:
+            return False
+        for debug_tool in ["vim", "less", "nano"]:
+            if debug_tool in step["value"]:
+                return False
+    return True
+
+
+def apt_update_has_upgrade_or_install(dfp: DockerfileParser) -> bool:
+    for step in dfp.structure:
+        if step["instruction"] != "RUN":
+            continue
+        if "apt-get update" in step["value"] and not (
+            "apt-get upgrade" in step["value"] or "apt-get install" in step["value"]
+        ):
+            return False
+    return True
 
 
 def copy_added_after_update(dfp: DockerfileParser) -> bool:
